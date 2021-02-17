@@ -17,7 +17,6 @@ package io.netty.incubator.codec.quic.example;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandler;
@@ -92,15 +91,15 @@ public final class QuicServerExample {
                     @Override
                     protected void initChannel(QuicStreamChannel ch)  {
                         ch.pipeline().addLast(new ByteToMessageDecoder() {
-                            private int numBytesRequested = -1;
+                            private long numBytesRequested = -1;
 
                             @Override
                             protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
-                                if (in.readableBytes() < 4) {
+                                if (in.readableBytes() < 8) {
                                     return;
                                 }
                                 if (numBytesRequested == -1) {
-                                    numBytesRequested = in.readInt();
+                                    numBytesRequested = in.readLong();
                                     writeData(ctx);
                                 } else {
                                     in.skipBytes(in.readableBytes());
@@ -110,8 +109,8 @@ public final class QuicServerExample {
                             private void writeData(ChannelHandlerContext ctx) {
                                 ByteBuf buffer = ctx.alloc().directBuffer(CHUNK_SIZE).writeZero(CHUNK_SIZE);
                                 do {
-                                    int size = Math.min(numBytesRequested, CHUNK_SIZE);
-                                    buffer.writerIndex(size);
+                                    long size = Math.min(numBytesRequested, CHUNK_SIZE);
+                                    buffer.writerIndex((int) size);
 
                                     ChannelFuture f = ctx.write(buffer.retainedDuplicate());
                                     numBytesRequested -= CHUNK_SIZE;
