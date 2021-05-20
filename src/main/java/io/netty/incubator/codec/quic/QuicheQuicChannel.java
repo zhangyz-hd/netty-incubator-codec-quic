@@ -230,7 +230,7 @@ final class QuicheQuicChannel extends AbstractChannel implements QuicChannel {
 
     private void connect(Function<QuicChannel, ? extends QuicSslEngine> engineProvider,
                          long configAddr, int localConnIdLength,
-                         boolean supportsDatagram) throws Exception {
+                         boolean supportsDatagram, long sockaddr) throws Exception {
         assert this.connection == null;
         assert this.traceId == null;
         assert this.key == null;
@@ -257,9 +257,11 @@ final class QuicheQuicChannel extends AbstractChannel implements QuicChannel {
         ByteBuffer connectId = address.connId.duplicate();
         ByteBuf idBuffer = alloc().directBuffer(connectId.remaining()).writeBytes(connectId.duplicate());
         try {
+            int sockaddrLen = SockaddrIn.write(sockaddr, remote);
             QuicheQuicConnection connection = quicheEngine.createConnection(ssl ->
                     Quiche.quiche_conn_new_with_tls(Quiche.memoryAddress(idBuffer) + idBuffer.readerIndex(),
-                            idBuffer.readableBytes(), -1, -1, configAddr, ssl, false));
+                            idBuffer.readableBytes(), -1, -1, sockaddr, sockaddrLen,
+                            configAddr, ssl, false));
             if (connection == null) {
                 failConnectPromiseAndThrow(new ConnectException());
                 return;
@@ -757,8 +759,8 @@ final class QuicheQuicChannel extends AbstractChannel implements QuicChannel {
     /**
      * Receive some data on a QUIC connection.
      */
-    void recv(ByteBuf buffer) {
-        ((QuicChannelUnsafe) unsafe()).connectionRecv(buffer);
+    void recv(InetSocketAddress sender, ByteBuf buffer) {
+        ((QuicChannelUnsafe) unsafe()).connectionRecv(sender, buffer);
     }
 
     void writable() {
@@ -883,8 +885,9 @@ final class QuicheQuicChannel extends AbstractChannel implements QuicChannel {
         for (;;) {
             boolean done;
             int writerIndex = out.writerIndex();
+            // TODO: Fix info!
             int written = Quiche.quiche_conn_send(
-                    connAddr, Quiche.memoryAddress(out) + writerIndex, out.writableBytes());
+                    connAddr, Quiche.memoryAddress(out) + writerIndex, out.writableBytes(), 0L);
             if (written == 0) {
                 // No need to create a new datagram packet. Just try again.
                 continue;
@@ -963,11 +966,12 @@ final class QuicheQuicChannel extends AbstractChannel implements QuicChannel {
     private boolean connectionSendSimple() {
         long connAddr = connection.address();
         boolean packetWasWritten = false;
+        long sendInfo = connection.sendInfoAddress();
         for (;;) {
             ByteBuf out = alloc().directBuffer(Quic.MAX_DATAGRAM_SIZE);
             int writerIndex = out.writerIndex();
             int written = Quiche.quiche_conn_send(
-                    connAddr, Quiche.memoryAddress(out) + writerIndex, out.writableBytes());
+                    connAddr, Quiche.memoryAddress(out) + writerIndex, out.writableBytes(), sendInfo);
 
             try {
                 if (Quiche.throwIfError(written)) {
@@ -985,8 +989,12 @@ final class QuicheQuicChannel extends AbstractChannel implements QuicChannel {
                 out.release();
                 continue;
             }
+            // TODO:
+            //  - Do something when peer changes ?
+            //  - cache InetSocketAddress to reduce object creation.
+            InetSocketAddress peer = QuicheSendInfo.read(sendInfo);
             out.writerIndex(writerIndex + written);
-            parent().write(new DatagramPacket(out, remote));
+            parent().write(new DatagramPacket(out, peer));
             packetWasWritten = true;
         }
         return packetWasWritten;
@@ -1104,7 +1112,7 @@ final class QuicheQuicChannel extends AbstractChannel implements QuicChannel {
             channelPromise.setFailure(new UnsupportedOperationException());
         }
 
-        void connectionRecv(ByteBuf buffer) {
+        void connectionRecv(InetSocketAddress sender, ByteBuf buffer) {
             if (isConnDestroyed()) {
                 return;
             }
@@ -1127,11 +1135,13 @@ final class QuicheQuicChannel extends AbstractChannel implements QuicChannel {
                 int bufferReaderIndex = buffer.readerIndex();
                 long memoryAddress = Quiche.memoryAddress(buffer) + bufferReaderIndex;
 
+                long recvInfoAddress = connection.recvInfoAddress();
+                QuicheRecvInfo.write(recvInfoAddress, sender);
                 long connAddr = connection.address();
                 try {
                     do  {
                         // Call quiche_conn_recv(...) until we consumed all bytes or we did receive some error.
-                        int res = Quiche.quiche_conn_recv(connAddr, memoryAddress, bufferReadable);
+                        int res = Quiche.quiche_conn_recv(connAddr, memoryAddress, bufferReadable, recvInfoAddress);
                         boolean done;
                         try {
                             done = Quiche.throwIfError(res);
@@ -1359,11 +1369,11 @@ final class QuicheQuicChannel extends AbstractChannel implements QuicChannel {
     // TODO: Come up with something better.
     static QuicheQuicChannel handleConnect(Function<QuicChannel, ? extends QuicSslEngine> sslEngineProvider,
                                            SocketAddress address, long config, int localConnIdLength,
-                                           boolean supportsDatagram) throws Exception {
+                                           boolean supportsDatagram, long sockaddr) throws Exception {
         if (address instanceof QuicheQuicChannel.QuicheQuicChannelAddress) {
             QuicheQuicChannel.QuicheQuicChannelAddress addr = (QuicheQuicChannel.QuicheQuicChannelAddress) address;
             QuicheQuicChannel channel = addr.channel;
-            channel.connect(sslEngineProvider, config, localConnIdLength, supportsDatagram);
+            channel.connect(sslEngineProvider, config, localConnIdLength, supportsDatagram, sockaddr);
             return channel;
         }
         return null;
