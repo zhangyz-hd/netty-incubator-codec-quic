@@ -1015,7 +1015,8 @@ final class QuicheQuicChannel extends AbstractChannel implements QuicChannel {
             SegmentedDatagramPacketAllocator segmentedDatagramPacketAllocator =
                     config.getSegmentedDatagramPacketAllocator();
             if (segmentedDatagramPacketAllocator.maxNumSegments() > 0) {
-                packetWasWritten = connectionSendSegments(segmentedDatagramPacketAllocator);
+                // TODO: Fix me to handle the new API
+                packetWasWritten = connectionSendSimple(); // connectionSendSegments(segmentedDatagramPacketAllocator);
             } else {
                 packetWasWritten = connectionSendSimple();
             }
