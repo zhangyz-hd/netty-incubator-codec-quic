@@ -18,9 +18,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+
+#ifdef _WIN32
+#include winsock2.h
+#include ws2tcpip.h
+#else
 #include <arpa/inet.h>
-#include <netinet/in.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#endif // _WIN32
 
 #include <quiche.h>
 #include "netty_jni_util.h"
