@@ -93,7 +93,7 @@
     <quicheHomeIncludeDir>${quicheHomeDir}/include</quicheHomeIncludeDir>
     <quicheRepository>https://github.com/cloudflare/quiche</quicheRepository>
     <quicheBranch>path-awareness</quicheBranch>
-    <quicheCommitSha>b426d0c06634a80b57698e7109ddbbf3f57ecc6f</quicheCommitSha>
+    <quicheCommitSha>4774bf5a4e162fde5ea1da5c570df41d95d5722a</quicheCommitSha>
     <generatedSourcesDir>${project.build.directory}/generated-sources</generatedSourcesDir>
     <templateDir>${project.build.directory}/template</templateDir>
     <cargoTarget />
